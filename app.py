@@ -147,6 +147,7 @@ async def handle_search_message(message: cl.Message):
                 # Add token to full response
                 full_response += token
                 await msg.stream_token(token)
+            
         
         if full_response:
             history = cl.user_session.get("history")

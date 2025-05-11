@@ -192,3 +192,4 @@ docx2txt
 pypdf
 sentence-transformers
 semantic-kernel
+keybert

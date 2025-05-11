@@ -1,4 +1,5 @@
 import os
+import json
 from typing import AsyncGenerator
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
@@ -6,11 +7,15 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.messages import TextMessage
 from autogen_core.models import UserMessage
 from autogen_ext.models.azure import AzureAIChatCompletionClient
-from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from azure.core.credentials import AzureKeyCredential
 from autogen_core.tools import FunctionTool
 from autogen_core import CancellationToken
+
 from tools.arxiv_search_tool import query_arxiv, query_web
+from tools.mcp_tools import (
+    list_local_pdfs,
+    resolve_user_selection_and_download
+)
 from prompts.prompt_template import LITERATURE_AGENT_PROMPT
 
 load_dotenv()
@@ -21,8 +26,8 @@ model_name = os.getenv("LITERATURE_AGENT_MODEL", "gpt-4o")
 
 # Azure GitHub Model client
 client = AzureAIChatCompletionClient(
-    model="gpt-4o",
-    endpoint="https://models.inference.ai.azure.com",
+    model="gpt-4o-mini",
+    endpoint=azure_endpoint,
     credential=AzureKeyCredential(azure_api_key),
     model_info={
         "json_output": True,
@@ -33,31 +38,17 @@ client = AzureAIChatCompletionClient(
     },
 )
 
-# api_key = os.getenv("OAI_KEY")
-# api_endpoint = os.getenv("OAI_ENDPOINT")
-
-# # Azure GitHub Model client
-# client = AzureOpenAIChatCompletionClient(
-#     api_key=api_key,
-#     azure_endpoint=api_endpoint,
-#     model="gpt-4o",
-#     api_version="2024-05-13",
-#     model_info={
-#         "json_output": True,
-#         "function_calling": True,
-#         "vision": False,
-#         "family": "unknown",
-#     },
-# )
-# Wrap arxiv/web search tools
+# Wrap all tools
 arxiv_tool = FunctionTool(query_arxiv, description="Searches arXiv for research papers.")
 web_tool = FunctionTool(query_web, description="Searches the web for relevant academic content.")
+list_pdfs_tool = FunctionTool(list_local_pdfs, description="Lists all PDF files in the user's local knowledge base.")
+resolve_save_tool = FunctionTool(resolve_user_selection_and_download, description="Saves recommended papers based on user's input like 'save 1st paper' or 'save all'.")
 
 # Define agent
 literature_assistant = AssistantAgent(
     name="LiteratureCollectionAgent",
     model_client=client,
-    tools=[arxiv_tool, web_tool],
+    tools=[arxiv_tool, web_tool, list_pdfs_tool, resolve_save_tool],
     system_message=LITERATURE_AGENT_PROMPT,
     reflect_on_tool_use=True,
     model_client_stream=True
@@ -69,11 +60,10 @@ async def run_literature_agent_stream(user_input: str) -> AsyncGenerator[str, No
         [TextMessage(content=user_input, source="user")],
         cancellation_token=CancellationToken()
     )
-    
-    # Yield a loader indicator
+
     yield "⏳ Thinking..."
-    
-    # Track the tools being used
+
+     # Track the tools being used
     announced_tools = set()  
     result_shown = False
     
@@ -100,7 +90,6 @@ async def run_literature_agent_stream(user_input: str) -> AsyncGenerator[str, No
                             # Add function arguments display
                             if hasattr(function_call, 'arguments') and function_call.arguments:
                                 try:
-                                    import json
                                     # Parse the arguments if they're a string containing JSON
                                     if isinstance(function_call.arguments, str):
                                         try:

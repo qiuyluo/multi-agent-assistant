@@ -56,3 +56,6 @@ docs/_build/
 
 # embedding model cache
 model_cache
+
+# knowledge base
+knowledge_base/

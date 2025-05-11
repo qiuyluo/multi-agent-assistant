@@ -1,7 +1,9 @@
 import requests
+import xml.etree.ElementTree as ET
 from duckduckgo_search import DDGS
 from typing import Dict, Any, List, Optional, Union
 from keybert import KeyBERT
+from tools.mcp_tools import RECOMMENDATION_CACHE
 
 kw_model = KeyBERT()
 
@@ -12,19 +14,20 @@ def extract_main_topic(query: str):
         return keywords[0][0]
     return query
 
-def query_arxiv(query: str, max_results: int = 5, sort_by: str = "relevance", sort_order: str = "descending"):
+def query_arxiv(query: str, max_results: int = 5, sort_by: str = "relevance", sort_order: str = "descending") -> str:
     """
-    Query the arXiv API for papers on a specific topic with sorting options.
+    Query the arXiv API for papers on a specific topic, sort them, and cache them.
     
     Parameters:
-    - topic: Search topic
-    - max_results: Maximum number of results to return (default: 5)
-    - sort_by: Sorting field ("relevance" or "submittedDate") (default: "relevance")
-    - sort_order: Sorting direction ("ascending" or "descending") (default: "descending")
+    - query: Search query string
+    - max_results: Number of results to return (default: 5)
+    - sort_by: "relevance" or "submittedDate"
+    - sort_order: "ascending" or "descending"
     
     Returns:
-    - XML response as string, or error message
+    - A string summary of recommended papers.
     """
+
     valid_sort_by = ["relevance", "submittedDate"]
     valid_sort_order = ["ascending", "descending"]
 
@@ -34,17 +37,36 @@ def query_arxiv(query: str, max_results: int = 5, sort_by: str = "relevance", so
     
     if sort_by not in valid_sort_by:
         return f"Invalid sort_by parameter. Must be one of: {', '.join(valid_sort_by)}"
-    
     if sort_order not in valid_sort_order:
         return f"Invalid sort_order parameter. Must be one of: {', '.join(valid_sort_order)}"
     
     url = f"http://export.arxiv.org/api/query?search_query=all:{topic}&start=0&max_results={max_results}"
     url += f"&sortBy={sort_by}&sortOrder={sort_order}"
-    
+
     response = requests.get(url)
     if response.status_code != 200:
         return "Failed to fetch arXiv data"
-    
+
+    # Parse XML response
+    root = ET.fromstring(response.text)
+    ns = {"atom": "http://www.w3.org/2005/Atom"}
+
+    entries = root.findall("atom:entry", ns)
+    if not entries:
+        return "No results found."
+
+    RECOMMENDATION_CACHE.clear()
+
+    for i, entry in enumerate(entries):
+        title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
+        link = entry.find("atom:id", ns).text.strip()
+        print(f"In arXiv search for RECOMMENDATION_CACHE: title: {title}, link: {link}")
+
+        RECOMMENDATION_CACHE.append({
+            "title": title,
+            "url": link
+        })
+
     return response.text
 
 def query_web(
