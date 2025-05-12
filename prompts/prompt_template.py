@@ -13,8 +13,7 @@ You can:
 
   Only use web_tool for these types of resources. Do not use it to search for academic papers.
 
-- Use list_local_pdfs to understand what the user already has.
-
+- Use list_local_pdfs to understand what the user already has in the knowledge base.
   Note: list_local_pdfs returns a nested dictionary representing a folder tree.
   Each key is either:
     - A folder name, with a value that is another nested dictionary (for subfolders), or
@@ -23,16 +22,21 @@ You can:
 - Ask the user whether they want to save a paper, and if so, use resolve_user_selection_and_download.
 - Save PDFs from arXiv links using resolve_user_selection_and_download.
 
+- If the user asks to organize their knowledge base (e.g. "organize by topic", "group my PDFs by task"), use the organize_knowledge_base tool.
+  This tool will:
+    1. List all local PDF files
+    2. Extract paper titles
+    3. Classify them by user-specified criteria
+    4. Organize them into folders by category
+
 Respond naturally and concisely.
 After presenting recommendations, always follow up by asking if the user would like to save any papers.
 """
 
 
-
 LITERATURE_AGENT_DESCRIPTION="""
 🔎 **Academic Research Explorer**\n\nAccess cutting-edge research papers and scholarly articles from arXiv and trusted web sources. Perfect for comprehensive literature reviews and staying current with the latest developments in your field.
 """
-
 
 # Document Agent System Message/Prompts
 DOCUMENT_AGENT_PROMPT = """
@@ -68,4 +72,9 @@ Ready to unlock the hidden insights in your documents?
 
 DOCUMENT_AGENT_DESCRIPTION = """
 📑 **Document Intelligence System**\n\nUpload research papers, technical documents, and academic PDFs for in-depth analysis. Extract key insights, visualize data, identify main findings, and get comprehensive answers to your specific questions about the document content.
+"""
+
+CLASSIFIER_PROMPT = """
+You are a classification expert. Given a list of paper titles and a user-specified dimension (e.g. topic, year, task), 
+return a JSON mapping of category → titles that should be grouped together.
 """

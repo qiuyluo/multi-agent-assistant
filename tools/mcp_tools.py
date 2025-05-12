@@ -1,8 +1,9 @@
 import os
 import re
 import requests
+import shutil
+from typing import Dict, List
 from datetime import datetime
-from typing import List
 
 PDF_KNOWLEDGE_BASE_PATH = "/Users/smu_cs_dsi/Documents/multi-agent-assistant/knowledge_base"  # change this to your path
 
@@ -105,3 +106,29 @@ def resolve_user_selection_and_download(user_reply: str) -> List[str]:
         results.append(result)
 
     return results
+
+def organize_files_by_mapping(topic_map: Dict[str, List[str]]) -> List[str]:
+    actions = []
+    files = os.listdir(PDF_KNOWLEDGE_BASE_PATH)
+
+    # Build title lookup map
+    title_to_filename = {}
+    for f in files:
+        if f.endswith(".pdf"):
+            title = f.rsplit("_", 1)[0].replace("_", " ").lower()
+            title_to_filename[title] = f
+
+    for label, titles in topic_map.items():
+        folder = os.path.join(PDF_KNOWLEDGE_BASE_PATH, label)
+        os.makedirs(folder, exist_ok=True)
+        for title in titles:
+            t_lower = title.lower()
+            matched = title_to_filename.get(t_lower)
+            if matched:
+                src = os.path.join(PDF_KNOWLEDGE_BASE_PATH, matched)
+                dst = os.path.join(folder, matched)
+                if not os.path.exists(dst):
+                    shutil.move(src, dst)
+                    actions.append(f"Moved '{matched}' to '{label}/'")
+
+    return actions
