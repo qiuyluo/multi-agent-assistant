@@ -1,6 +1,6 @@
 import os
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from autogen_agentchat.agents import AssistantAgent
@@ -10,12 +10,14 @@ from autogen_ext.models.azure import AzureAIChatCompletionClient
 from azure.core.credentials import AzureKeyCredential
 from autogen_core.tools import FunctionTool
 from autogen_core import CancellationToken
-
+from autogen_core.tool_agent import ToolAgent
 from tools.arxiv_search_tool import query_arxiv, query_web
 from tools.mcp_tools import (
     list_local_pdfs,
-    resolve_user_selection_and_download
+    resolve_user_selection_and_download,
+    organize_files_by_mapping
 )
+from agents.classification_agent import classify_titles_by_prompt
 from prompts.prompt_template import LITERATURE_AGENT_PROMPT
 
 load_dotenv()
@@ -26,7 +28,7 @@ model_name = os.getenv("LITERATURE_AGENT_MODEL", "gpt-4o")
 
 # Azure GitHub Model client
 client = AzureAIChatCompletionClient(
-    model="gpt-4o-mini",
+    model="gpt-4.1",
     endpoint=azure_endpoint,
     credential=AzureKeyCredential(azure_api_key),
     model_info={
@@ -43,12 +45,21 @@ arxiv_tool = FunctionTool(query_arxiv, description="Searches arXiv for research 
 web_tool = FunctionTool(query_web, description="Searches the web for relevant academic content.")
 list_pdfs_tool = FunctionTool(list_local_pdfs, description="Lists all PDF files in the user's local knowledge base.")
 resolve_save_tool = FunctionTool(resolve_user_selection_and_download, description="Saves recommended papers based on user's input like 'save 1st paper' or 'save all'.")
+organize_tool = FunctionTool(
+    organize_files_by_mapping, 
+    name="organize_files_by_mapping", 
+    description="Organizes local PDF files into folders based on a formatted string that groups paper titles under classification themes (e.g., by topic, year, or method).")
+classify_tool = FunctionTool(
+    classify_titles_by_prompt,
+    name="classify_titles_by_prompt",
+    description="Classifies paper titles using TopicOrganizerAgent based on a user-specified rule."
+)
 
 # Define agent
 literature_assistant = AssistantAgent(
     name="LiteratureCollectionAgent",
     model_client=client,
-    tools=[arxiv_tool, web_tool, list_pdfs_tool, resolve_save_tool],
+    tools=[arxiv_tool, web_tool, list_pdfs_tool, resolve_save_tool, organize_tool, classify_tool],
     system_message=LITERATURE_AGENT_PROMPT,
     reflect_on_tool_use=True,
     model_client_stream=True
