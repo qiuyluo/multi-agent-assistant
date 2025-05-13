@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import shutil
+import difflib
 from typing import Dict, List
 from datetime import datetime
 
@@ -107,28 +108,82 @@ def resolve_user_selection_and_download(user_reply: str) -> List[str]:
 
     return results
 
-def organize_files_by_mapping(topic_map: Dict[str, List[str]]) -> List[str]:
+def organize_files_by_mapping(topic_instruction: str) -> List[str]:
+    """
+    Organizes PDF files into folders based on classification themes and paper titles provided by a language model.
+
+    Input format example (theme could be topic, year, method, etc.):
+    Theme A
+    "Title 1"
+    "Title 2"
+
+    Theme B
+    "Title 3"
+    ...
+
+    This function will:
+    - Recursively scan all PDF files in PDF_KNOWLEDGE_BASE_PATH (including subfolders)
+    - Match paper titles to filenames using fuzzy matching
+    - Move each PDF into a new folder based on its associated theme
+    - Remove any empty folders left behind during reorganization
+    """
+    print(f"[📃 organize_files_by_mapping] Working...")
+
     actions = []
-    files = os.listdir(PDF_KNOWLEDGE_BASE_PATH)
+    topic_map: Dict[str, List[str]] = {}
+    current_topic = None
 
-    # Build title lookup map
-    title_to_filename = {}
-    for f in files:
-        if f.endswith(".pdf"):
-            title = f.rsplit("_", 1)[0].replace("_", " ").lower()
-            title_to_filename[title] = f
+    # Parse topic → title mapping from instruction
+    for line in topic_instruction.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        elif line.startswith('"') and line.endswith('"'):
+            if current_topic:
+                topic_map.setdefault(current_topic, []).append(line.strip('"'))
+        else:
+            current_topic = line
 
-    for label, titles in topic_map.items():
-        folder = os.path.join(PDF_KNOWLEDGE_BASE_PATH, label)
-        os.makedirs(folder, exist_ok=True)
+    # Recursively find all PDF files
+    title_to_fullpath = {}
+    for root, _, files in os.walk(PDF_KNOWLEDGE_BASE_PATH):
+        for f in files:
+            if not f.endswith(".pdf"):
+                continue
+            full_path = os.path.join(root, f)
+            title_key = f.rsplit('_', 1)[0].replace('_', ' ').lower()
+            title_to_fullpath[title_key] = full_path
+
+    # Move files into new topic folders
+    for topic, titles in topic_map.items():
+        folder_path = os.path.join(PDF_KNOWLEDGE_BASE_PATH, topic.replace(" ", "_"))
+        os.makedirs(folder_path, exist_ok=True)
+
         for title in titles:
-            t_lower = title.lower()
-            matched = title_to_filename.get(t_lower)
-            if matched:
-                src = os.path.join(PDF_KNOWLEDGE_BASE_PATH, matched)
-                dst = os.path.join(folder, matched)
+            candidates = list(title_to_fullpath.keys())
+            closest = difflib.get_close_matches(title.lower(), candidates, n=1, cutoff=0.85)
+            matched_key = closest[0] if closest else None
+
+            if matched_key:
+                src = title_to_fullpath[matched_key]
+                dst = os.path.join(folder_path, os.path.basename(src))
+
                 if not os.path.exists(dst):
                     shutil.move(src, dst)
-                    actions.append(f"Moved '{matched}' to '{label}/'")
+                    actions.append(f"Moved '{os.path.basename(src)}' to '{folder_path}/'")
+            else:
+                actions.append(f"❗ Warning: Title not found in files: {title}")
+
+    # Optional: remove old empty folders (excluding new topic folders)
+    for root, dirs, _ in os.walk(PDF_KNOWLEDGE_BASE_PATH, topdown=False):
+        for d in dirs:
+            folder = os.path.join(root, d)
+            if folder not in [os.path.join(PDF_KNOWLEDGE_BASE_PATH, t.replace(" ", "_")) for t in topic_map.keys()]:
+                try:
+                    if not os.listdir(folder):
+                        os.rmdir(folder)
+                        actions.append(f"🧹 Removed empty folder: {folder}")
+                except Exception as e:
+                    actions.append(f"⚠️ Could not remove folder {folder}: {e}")
 
     return actions

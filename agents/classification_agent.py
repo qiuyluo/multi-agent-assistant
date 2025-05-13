@@ -5,7 +5,7 @@ from autogen_agentchat.messages import TextMessage
 from dotenv import load_dotenv
 from azure.core.credentials import AzureKeyCredential
 from autogen_core import CancellationToken
-import os, json
+import os, json, re
 from typing import List, Dict
 
 load_dotenv()
@@ -30,20 +30,22 @@ classification_agent = AssistantAgent(
     system_message=CLASSIFIER_PROMPT
 )
 
-async def classify_titles_by_criteria(paper_titles: List[str], criteria: str) -> Dict[str, List[str]]:
-    prompt = f"""
-    Classify the following paper titles by: '{criteria}'.
-    Return a JSON object where each key is a group name and the value is a list of paper titles.
-
-    Titles:
-    {json.dumps(paper_titles, indent=2)}
-    """
-    from autogen_core.models import UserMessage
-    response = await classification_agent.on_messages([
-        TextMessage(content=prompt, source="user")],
-        cancellation_token=CancellationToken()
-        )
+async def classify_titles_by_prompt(prompt: str) -> Dict[str, List[str]]:
     try:
-        return json.loads(response[-1].content)
-    except Exception:
-        return {"Uncategorized": paper_titles}
+        print(f"[🔍 classify_titles_by_prompt] Prompt: {prompt}")
+        response = await classification_agent.on_messages(
+            [TextMessage(content=prompt, source="user")],
+            cancellation_token=CancellationToken()
+        )
+        content = response.chat_message.content
+
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        else:
+            raise ValueError("No JSON object found in response.")
+
+    except Exception as e:
+        print(f"[❌ classify_titles_by_prompt parsing failed]: {e}")
+        return {"Uncategorized": []}
+

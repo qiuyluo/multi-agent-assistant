@@ -17,7 +17,7 @@ from tools.mcp_tools import (
     resolve_user_selection_and_download,
     organize_files_by_mapping
 )
-from agents.classification_agent import classify_titles_by_criteria
+from agents.classification_agent import classify_titles_by_prompt
 from prompts.prompt_template import LITERATURE_AGENT_PROMPT
 
 load_dotenv()
@@ -28,7 +28,7 @@ model_name = os.getenv("LITERATURE_AGENT_MODEL", "gpt-4o")
 
 # Azure GitHub Model client
 client = AzureAIChatCompletionClient(
-    model="gpt-4o",
+    model="gpt-4.1",
     endpoint=azure_endpoint,
     credential=AzureKeyCredential(azure_api_key),
     model_info={
@@ -45,31 +45,21 @@ arxiv_tool = FunctionTool(query_arxiv, description="Searches arXiv for research 
 web_tool = FunctionTool(query_web, description="Searches the web for relevant academic content.")
 list_pdfs_tool = FunctionTool(list_local_pdfs, description="Lists all PDF files in the user's local knowledge base.")
 resolve_save_tool = FunctionTool(resolve_user_selection_and_download, description="Saves recommended papers based on user's input like 'save 1st paper' or 'save all'.")
-# organize_tool = FunctionTool(organize_files_by_mapping, name="organize_files_by_mapping", description="Organizes local PDF files into folders based on a topic-to-title mapping dictionary.")
-# classify_tool = FunctionTool(
-#     classify_titles_by_criteria,
-#     name="classify_titles_by_criteria",
-#     description="Classifies paper titles using TopicOrganizerAgent based on a user-specified rule."
-# )
-
-async def organize_knowledge_base(criteria: str) -> List[str]:
-    pdf_files = list_local_pdfs()
-    paper_titles = [f.rsplit('_', 1)[0].replace('_', ' ') for f in pdf_files]
-    classified = await classify_titles_by_criteria(paper_titles, criteria)
-    result = organize_files_by_mapping(classified)
-    return result
-
 organize_tool = FunctionTool(
-    organize_knowledge_base,
-    name="organize_knowledge_base",
-    description="Organizes the local knowledge base by user-defined criteria such as topic, year, or method."
+    organize_files_by_mapping, 
+    name="organize_files_by_mapping", 
+    description="Organizes local PDF files into folders based on a formatted string that groups paper titles under classification themes (e.g., by topic, year, or method).")
+classify_tool = FunctionTool(
+    classify_titles_by_prompt,
+    name="classify_titles_by_prompt",
+    description="Classifies paper titles using TopicOrganizerAgent based on a user-specified rule."
 )
 
 # Define agent
 literature_assistant = AssistantAgent(
     name="LiteratureCollectionAgent",
     model_client=client,
-    tools=[arxiv_tool, web_tool, list_pdfs_tool, resolve_save_tool, organize_tool],
+    tools=[arxiv_tool, web_tool, list_pdfs_tool, resolve_save_tool, organize_tool, classify_tool],
     system_message=LITERATURE_AGENT_PROMPT,
     reflect_on_tool_use=True,
     model_client_stream=True
